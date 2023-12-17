@@ -24,7 +24,7 @@ class BullyNode:
         self.server_thread.daemon = True
         self.server_thread.start()
     
-
+    #選挙を通知する
     def send_election_to_node(self, higher_node):
             try:
                 proxy = ServerProxy(f"http://localhost:{higher_node.port}")
@@ -32,15 +32,19 @@ class BullyNode:
             except Exception as e:
                 print(f"Error sending election to node {higher_node.id}: {e}")
                 return None
-    
+    #選挙を開始する
     def election(self):
         print(f"Node {self.id} is starting an election.")
         print(f'今の選挙のタームは{self.election_term}です')
         self.in_election = True
         #自分よりidの大きなノードを探す。あれば選挙するように通達
         higher_nodes = [p for p in self.processes if p.id > self.id]
+        for i in higher_nodes:
+            print(f'私はNode {self.id}です。私より大きいノード{i.id}')
 
-        with ThreadPoolExecutor(max_workers=len(higher_nodes)) as executor:
+        #with ThreadPoolExecutor(max_workers=len(higher_nodes)) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, len(higher_nodes))) as executor:
+
             election_results = list(executor.map(self.send_election_to_node, higher_nodes))
 
         election_results = set(result for result in election_results if result is not None)
@@ -53,7 +57,7 @@ class BullyNode:
 
         self.in_election = False
 
-
+    #選挙を送る
     def send_election(self, sender_id, sender_election_term):
         self.election_term = sender_election_term + 1
         print(f"Node {self.id} received election from Node {sender_id}.")
