@@ -4,6 +4,7 @@ import threading
 import multiprocessing 
 import time
 
+#helloこんい
 #class of a node
 class BullyNode:
     def __init__(self, node_id, port, processes):
