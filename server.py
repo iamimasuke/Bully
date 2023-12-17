@@ -1,8 +1,10 @@
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.client import ServerProxy
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import multiprocessing 
 import time
+from functools import partial
 
 #class of a node
 class BullyNode:
@@ -21,42 +23,36 @@ class BullyNode:
         self.server_thread = threading.Thread(target=self.server.serve_forever)
         self.server_thread.daemon = True
         self.server_thread.start()
+    
 
-
-
-    #Bully algorithmの選挙
+    def send_election_to_node(self, higher_node):
+            try:
+                proxy = ServerProxy(f"http://localhost:{higher_node.port}")
+                return proxy.send_election(self.id, self.election_term)
+            except Exception as e:
+                print(f"Error sending election to node {higher_node.id}: {e}")
+                return None
+    
     def election(self):
         print(f"Node {self.id} is starting an election.")
         print(f'今の選挙のタームは{self.election_term}です')
         self.in_election = True
         #自分よりidの大きなノードを探す。あれば選挙するように通達
         higher_nodes = [p for p in self.processes if p.id > self.id]
-        election_results = set()
 
-        for higher_node in higher_nodes:
-            try:
+        with ThreadPoolExecutor(max_workers=len(higher_nodes)) as executor:
+            election_results = list(executor.map(self.send_election_to_node, higher_nodes))
 
-                proxy = ServerProxy(f"http://localhost:{higher_node.port}")
-                #response = proxy.send_election(self.id, self.election_term)
-                #ノード1がノード2,3,4にsend_electionを送ったとき、ノード2のみ先々処理を進めていたらいけない
-                #ノード2,3,4が同時に処理を進める必要がある
-                p = multiprocessing.Process(target=proxy.send_election, args=(self.id, self.election_term))
-                p.start()
-                p.join()
-                response = p.get()
-                election_results.add(response)
-            except Exception as e:
-                print(f"Error sending election to node {higher_node.id}: {e}")
-       
+        election_results = set(result for result in election_results if result is not None)
         print(f"選挙結果: {election_results}")
-        
-       
+
         if not election_results or self.id == max(election_results):
             self.become_leader()
         else:
             self.become_follower()
 
         self.in_election = False
+
 
     def send_election(self, sender_id, sender_election_term):
         self.election_term = sender_election_term + 1
