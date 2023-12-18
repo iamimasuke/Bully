@@ -32,7 +32,7 @@ class BullyNode:
     def election(self):
         lock = threading.Lock()
         threads = []
-        self.nodes_replies = []
+        self.nodes_replies = []#投票してそのレスポンスを受け取る
         print(f"Node {self.id}は選挙を開始します")
         print(f'私はNode {self.id}です。今の選挙のタームは{self.election_term}です')
         self.in_election = True
@@ -44,13 +44,13 @@ class BullyNode:
             threads.append(thread)
             print(f'私はNode {self.id}です。Node{higher_node.id}のスレッドを作成しました')
             thread.start()   
-        #待機必要。みんなからOKもらえたら進む
-        #処理パート１
+
         if self.id == max([p.id for p in self.processes]) and any(node.in_election for node in self.processes):
-            print(f"私はNode {self.id}です。私が一番大きので帰ります")
+            print(f"私はNode {self.id}です。私が一番大きので退場します")
             return
+        #処理パート１t1とt2の間に行いたい
         time.sleep(1)
-        print(f"私はNode {self.id}です。リプライをくれた同士たちは{self.nodes_replies}です")
+        print(f"私はNode {self.id}です。リプライをくれたノードたちは{self.nodes_replies}です")
         if higher_nodes == self.nodes_replies.sort():  
             self.in_election = False
             print(f"Node {self.id}　選挙終了")
@@ -68,18 +68,17 @@ class BullyNode:
 
     #選挙を送る
     def send_election(self, sender_id, sender_election_term):
+        #senderにOKを返すスレッドと選挙をするスレッドを作成
         t1 = threading.Thread(target=self.send_node_ok, args=(self.id,sender_id))
         t2 = threading.Thread(target=self.election)
         t1.start()
         t1.join()
-        time.sleep(3)
+        #ここのタイミングで処理1を行いたい
+        time.sleep(2)
         self.election_term = sender_election_term + 1
         print(f"Node {self.id} received election from Node {sender_id}.")
         t2.start()
         t2.join()
-        #self.send_node_ok(self.id, sender_id)#自分のidと送信先のid
-        #待機必要senderが選挙を終えるまでまつ
-        #self.election()
     
     #node2,3,4が送る
     def send_node_ok(self, self_id,sender_id):
