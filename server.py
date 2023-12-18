@@ -1,10 +1,7 @@
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.client import ServerProxy
-from concurrent.futures import ThreadPoolExecutor
 import threading
-import multiprocessing 
 import time
-from functools import partial
 
 #class of a node
 class BullyNode:
@@ -12,10 +9,9 @@ class BullyNode:
         self.id = node_id
         self.port = port
         self.processes = processes
-        self.leader_id = None
-        self.election_timeout = 2
         self.in_election = False
         self.election_term = 1
+        self.nodes_replies = []
         #RPCによるサーバーを立てる
         #これによりサーバー間で通信が可能に
         self.server = SimpleXMLRPCServer(("localhost", port), allow_none=True)
@@ -24,88 +20,93 @@ class BullyNode:
         self.server_thread.daemon = True
         self.server_thread.start()
     
-    #選挙を通知する
-    def send_election_to_node(self, higher_node):
-            try:
-                proxy = ServerProxy(f"http://localhost:{higher_node.port}")
-                return proxy.send_election(self.id, self.election_term)
-            except Exception as e:
-                print(f"Error sending election to node {higher_node.id}: {e}")
-                return None
+    def stop_server(self):
+        self.server.shutdown()
+        self.server_thread.join()
+
+    def __del__(self):
+        self.stop_server()
+        self.server_thread.join()       
+
     #選挙を開始する
     def election(self):
-        print(f"Node {self.id} is starting an election.")
-        print(f'今の選挙のタームは{self.election_term}です')
+        lock = threading.Lock()
+        threads = []
+        self.nodes_replies = []
+        print(f"Node {self.id}は選挙を開始します")
+        print(f'私はNode {self.id}です。今の選挙のタームは{self.election_term}です')
         self.in_election = True
         #自分よりidの大きなノードを探す。あれば選挙するように通達
         higher_nodes = [p for p in self.processes if p.id > self.id]
-        for i in higher_nodes:
-            print(f'私はNode {self.id}です。私より大きいノード{i.id}')
-
-        #with ThreadPoolExecutor(max_workers=len(higher_nodes)) as executor:
-        with ThreadPoolExecutor(max_workers=max(1, len(higher_nodes))) as executor:
-
-            election_results = list(executor.map(self.send_election_to_node, higher_nodes))
-
-        election_results = set(result for result in election_results if result is not None)
-        print(f"選挙結果: {election_results}")
-
-        if not election_results or self.id == max(election_results):
+        print(f'私はNode {self.id}です。私より大きいノードは{[p.id for p in higher_nodes]}です')    
+        for higher_node in higher_nodes:
+            thread = threading.Thread(target=self.send_election_to_node, args=(higher_node,))
+            threads.append(thread)
+            print(f'私はNode {self.id}です。Node{higher_node.id}のスレッドを作成しました')
+            thread.start()   
+        #待機必要。みんなからOKもらえたら進む
+        #処理パート１
+        if self.id == max([p.id for p in self.processes]) and any(node.in_election for node in self.processes):
+            print(f"私はNode {self.id}です。私が一番大きので帰ります")
+            return
+        time.sleep(1)
+        print(f"私はNode {self.id}です。リプライをくれた同士たちは{self.nodes_replies}です")
+        if higher_nodes == self.nodes_replies.sort():  
+            self.in_election = False
+            print(f"Node {self.id}　選挙終了")
+        if not any(node.in_election for node in self.processes):
             self.become_leader()
-        else:
-            self.become_follower()
-
-        self.in_election = False
+ 
+     #選挙を通知する
+    def send_election_to_node(self, higher_node):
+        try:
+            proxy = ServerProxy(f"http://localhost:{higher_node.port}")
+            proxy.send_election(self.id, self.election_term)
+        except Exception as e:
+            print(f"Error sending election to node {higher_node.id}: {e}")
+            return None
 
     #選挙を送る
     def send_election(self, sender_id, sender_election_term):
+        t1 = threading.Thread(target=self.send_node_ok, args=(self.id,sender_id))
+        t2 = threading.Thread(target=self.election)
+        t1.start()
+        t1.join()
+        time.sleep(3)
         self.election_term = sender_election_term + 1
         print(f"Node {self.id} received election from Node {sender_id}.")
-        if self.in_election:
-            return self.id
-        elif sender_id > self.id:
-            self.become_follower()
-            self.reply_election(self.id)
-        else:
-            self.election()
-            return self.id
-        
-
-    def reply_election(self, sender_id):
-        print(f"Node {self.id} is replying to the election.")
-        self.processes[sender_id].leader_id = None
-
-        if self.in_election:
-            for process in self.processes:
-                if process.id > sender_id and process.id > self.id:
-                    try:
-                        proxy = ServerProxy(f"http://localhost:{process.port}")
-                        proxy.reply_election(sender_id)
-                    except Exception as e:
-                        print(f"Error replying election to node {process.id}: {e}")
-
-    def notify_leader(self, leader_id):
-        print(f"Node {self.id} received leader notification from Node {leader_id}.")
-        self.leader_id = leader_id
+        t2.start()
+        t2.join()
+        #self.send_node_ok(self.id, sender_id)#自分のidと送信先のid
+        #待機必要senderが選挙を終えるまでまつ
+        #self.election()
+    
+    #node2,3,4が送る
+    def send_node_ok(self, self_id,sender_id):
+        sender_port = 0
+        for i in self.processes:
+            if i.id == sender_id:
+                sender_port = i.port
+        proxy = ServerProxy(f"http://localhost:{sender_port}")
+        proxy.recieve_ok(self.id)
+    
+    #node1が実行
+    def recieve_ok(self, sender_id):
+        print(f"Node {self.id} は node{sender_id}からOKを受け取りました")
+        self.nodes_replies.append(sender_id)       
 
     def become_leader(self):
-        print(f"Node {self.id} becomes the leader.")
-        self.leader_id = self.id
-        for process in self.processes:
-            if process.id != self.id:
-                try:
-                    proxy = ServerProxy(f"http://localhost:{process.port}")
-                    proxy.notify_leader(self.id)
-                except Exception as e:
-                    print(f"Error notifying leader to node {process.id}: {e}")
-
-    def become_follower(self):
-        print(f"Node {self.id} becomes a follower.")
-        self.leader_id = None
-
-    def run(self):
-        pass
-
+        print(f"【速報！！！！！】Node {self.id} is the new leader.")
+        for node in self.processes:
+            if node.id != self.id:
+                proxy = ServerProxy(f"http://localhost:{node.port}")
+                proxy.recieve_leader(self.id)
+    
+    def recieve_leader(self, leader_id):
+        print(f"Node {self.id} received leader from Node {leader_id}.")
+        self.leader_id = leader_id
+        
+    
 if __name__ == "__main__":
     nodes = [
         BullyNode(node_id=1, port=8001, processes=[]),
