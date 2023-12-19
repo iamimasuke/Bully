@@ -35,12 +35,11 @@ class BullyNode:
         threads2 = []
         self.nodes_replies = []
         self.in_election_in_thread = True
-        print(f"Node {self.id}は選挙を開始します")
-        print(f'私はNode {self.id}です。今の選挙のタームは{self.election_term}です')
+        print(f"Node {self.id}は選挙を開始します。今の選挙のタームは{self.election_term}です")
         self.in_election = True
         #自分よりidの大きなノードを探す。あれば選挙するように通達
         higher_nodes = [p for p in self.processes if p.id > self.id]
-        print(f'私はNode {self.id}です。私より大きいノードは{[p.id for p in higher_nodes]}です')    
+        #print(f'私はNode {self.id}です。私より大きいノードは{[p.id for p in higher_nodes]}です')    
         for higher_node in higher_nodes:
             thread = threading.Thread(target=higher_node.reply, args=(self,))
             threads.append(thread)
@@ -59,24 +58,20 @@ class BullyNode:
         if not any(node.in_election for node in self.processes):
             self.become_leader()
         
-        for higher_node in higher_nodes:   
-            print(f'私はNode {self.id}です。Node{higher_node.id}の選挙開始用のスレッドを作成します')     
-            thread2 = threading.Thread(target=higher_node.election())
+        for reply_node in self.nodes_replies:
+            reply_nodes = [p for p in self.processes if p.id == reply_node][0]
+            thread2 = threading.Thread(target=reply_nodes.election)
             threads2.append(thread2)
             print(f'私はNode {self.id}です。Node{higher_node.id}の選挙開始用のスレッドを作成しました')
             thread2.start()   
         
     #node2,3が実行
     def reply(self,sender):
-        print(f"Node {self.id} はNode {node.id}にリプライを送ります")
+        self.election_term = sender.election_term + 1
+        print(f"Node {self.id} の選挙タームは{self.election_term}です")
         self.in_election = True
-        print(f"Node {self.id} は選挙中です。")
-        proxy = ServerProxy(f"http://localhost:{sender.port}")
-        proxy.receive_ok(self.id)
-
-    def receive_ok(self, sender_id):
-        print(f"Node {self.id} は node{sender_id}からOKを受け取りました")
-        self.nodes_replies.append(sender_id)       
+        sender.nodes_replies.append(self.id)
+        print(f"Node {sender.id} はNode {self.id}からOKをもらいました")
 
     def become_leader(self):
         print(f"【速報！！！！！】Node {self.id} がリーダーになりました!!.")
