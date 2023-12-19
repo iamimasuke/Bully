@@ -59,12 +59,12 @@ class BullyNode:
             self.become_leader()
         
         for higher_node in higher_nodes:        
-            thread2 = threading.Thread(target=self.send_do_election, args=(higher_node))
+            thread2 = threading.Thread(target=higher_node.election())
             threads2.append(thread2)
             print(f'私はNode {self.id}です。Node{higher_node.id}の選挙開始用のスレッドを作成しました')
             thread2.start()   
         
-    
+    '''
     def send_do_election(self,higher_node):
         print(f"Node {self.id} はNode {higher_node.id}に選挙を送ります")
         proxy = ServerProxy(f"http://localhost:{higher_node.port}")
@@ -72,7 +72,7 @@ class BullyNode:
     
     def do_election(self):
         self.election()
-        
+    '''    
  
      #選挙を通知する
     def send_election_to_node(self, higher_node):
@@ -88,11 +88,14 @@ class BullyNode:
     def send_election(self, sender_id, sender_election_term):
         #senderにOKを返すスレッドと選挙をするスレッドを作成
         print(f"ーーーーーNode {self.id}  はNode {sender_id}から色々受け取りました")
+        '''
         t1 = threading.Thread(target=self.send_node_ok, args=(self.id,sender_id))
         t1.start()
+        '''
+        self.send_node_ok(self.id,sender_id)
         #t1の処理が終わるまで待つ
         #senderにOKを返す処理が終わるまで待つため
-        time.sleep(2)
+   
         self.election_term = sender_election_term + 1
         print(f"Node {self.id}  はNode {sender_id}から選挙を受け取りました")
 
@@ -104,10 +107,9 @@ class BullyNode:
             if i.id == sender_id:
                 sender_port = i.port
         proxy = ServerProxy(f"http://localhost:{sender_port}")
-        proxy.recieve_ok(self.id)
-    
-    #node1が実行
-    def recieve_ok(self, sender_id):
+        proxy.receive_ok(self.id)
+   
+    def receive_ok(self, sender_id):
         print(f"Node {self.id} は node{sender_id}からOKを受け取りました")
         self.nodes_replies.append(sender_id)       
 
@@ -116,7 +118,7 @@ class BullyNode:
         for node in self.processes:
             if node.id != self.id:
                 proxy = ServerProxy(f"http://localhost:{node.port}")
-                proxy.recieve_leader(self.id)
+                proxy.receive_leader(self.id)
     
     def recieve_leader(self, leader_id):
         print(f"Node {self.id} received leader from Node {leader_id}.")
