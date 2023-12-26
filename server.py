@@ -42,7 +42,7 @@ class BullyNode:
                 try:
                     BullyNode.proxies[node_id-1].reset_leader()
                 except Exception as e:
-                    print(f"Node {node_id} にRPCを送信できませんでした") 
+                    print(f"Node {self.id} はNode {node_id} にreset_leaderのRPCを送信できませんでした") 
                     print(f"エラー詳細：{e}")
             else:
                 self.reset_leader()
@@ -73,7 +73,7 @@ class BullyNode:
                 BullyNode.proxies[higher_node.id-1].election(self.id)
             except Exception as e:
                 #BullyNode.lock.release()
-                print(f"Node {higher_node.id} にRPCを送信できませんでした") 
+                print(f"Node {self.id} はNode {higher_node.id} にelectionのRPCを送信できませんでした") 
                 print(f"エラー詳細：{e}")
                 #一番大きいNodeが故障していて、自分が2番目に大きいNodeのとき自分がリーダーになる
                 if higher_node.id == max([p.id for p in BullyNode.processes]):
@@ -98,9 +98,10 @@ class BullyNode:
             else:
                 #リプの送信
                 t1 = threading.Thread(target=self.reply, args=(from_node_id,))
-                t1.start()        
+                t1.start()
+                t1.join()        
                 #自分のidが最大ならリーダーになる
-                if self.id == max([p.id for p in BullyNode.processes]):
+                if self.id == max(BullyNode.processes_id):
                     self.become_leader()
                 else:
                     t2 = threading.Thread(target=self.send_parallel_election,args=())
@@ -116,10 +117,10 @@ class BullyNode:
                 BullyNode.proxies[from_node_id-1].receive_reply(self.id)
             except Exception as e:
                 #BullyNode.lock.release()
-                print(f"Node {self.id} はNode {from_node_id} にリプライを送信できませんでした")
-                print(e)
+                print(f"Node {self.id} はNode {from_node_id} にreceive_replyのRPCを送信できませんでした")
+                print(f"エラー詳細：{e}")
 
-                
+
     #リプライを受け取る
     def receive_reply(self,reply_sender_id):
         if self.leader_id is None:
@@ -141,7 +142,7 @@ class BullyNode:
                         BullyNode.proxies[node.id-1].register_leader(self.id)
                     except Exception as e:
                         #BullyNode.lock.release()
-                        print(f"Node {node.id} にRPCを送信できませんでした")
+                        print(f"Node {self.id}はNode {node.id} にregister_leaderのRPCを送信できませんでした")
                         print(f'エラー原因{e}')
         else:
             print(f"Node {self.id} はリーダーがいるのでリーダーになれません")
