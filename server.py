@@ -3,11 +3,13 @@ from xmlrpc.client import ServerProxy
 import threading
 import time
 import pdb #デバック用
+import sys
 
 #class of a node
 class BullyNode:
 
     processes_id = []
+    lock = threading.Lock()
 
 
     def __init__(self, node_id, port, is_down=False):
@@ -41,7 +43,6 @@ class BullyNode:
                 except Exception as e:
                     print(f"Node {self.id} はNode {node_id} にreset_leaderのRPCを送信できませんでした") 
                     print(f"エラー詳細：{e}")
-                    
             else:
                 self.reset_leader()
     
@@ -59,9 +60,9 @@ class BullyNode:
             higher_nodes_id = [p for p in BullyNode.processes_id if p > self.id]
             for higher_node_id in higher_nodes_id:
                 t=threading.Thread(target=self.send_election, args=(higher_node_id,))
+                t.daemon = True
                 threads.append(t)
                 t.start()
-            
     
     #それぞれのスレッドがNodeに選挙を通知
     def send_election(self,higher_node_id):
@@ -81,7 +82,6 @@ class BullyNode:
                 time.sleep(1)
                 self.check_reply()
             
-
    #選挙を受け取ったNodeが送信元にリプライを送り、自分より大きいNodeに選挙を通知
     def election(self,from_node_id):
         if self.leader_id is None:
@@ -93,14 +93,15 @@ class BullyNode:
             else:
                 #リプの送信
                 t1 = threading.Thread(target=self.reply, args=(from_node_id,))
-             
+                t1.daemon = True
                 t1.start()
                 t1.join()
                 #自分のidが最大ならリーダーになる
                 if self.id == max(BullyNode.processes_id):
                     self.become_leader()
                 else:
-                    t2 = threading.Thread(target=self.send_parallel_election,args=())   
+                    t2 = threading.Thread(target=self.send_parallel_election,args=()) 
+                    t2.daemon = True  
                     t2.start()        
         
    #リプライを送信
@@ -112,49 +113,50 @@ class BullyNode:
                 node_port = 8000 + from_node_id
                 proxy = ServerProxy(f"http://localhost:{node_port}",  allow_none=True)
                 proxy.receive_reply(self.id)
-
             except Exception as e:
                 print(f"Node {self.id} はNode {from_node_id} にreceive_replyのRPCを送信できませんでした")
                 print(f"エラー詳細：{e}")
                 return
-
-
+            
     #リプライを受け取る
     def receive_reply(self,reply_sender_id):
-        if self.leader_id is None:
-            self.replies.append(reply_sender_id)
-            print(f"Node {self.id} はNode {reply_sender_id} からリプライを受け取りました")
-            return
-    
+      #  with BullyNode.lock:
+            if self.leader_id is None:
+                self.replies.append(reply_sender_id)
+                print(f"Node {self.id} はNode {reply_sender_id} からリプライを受け取りました")
+                return
+        
     def check_reply(self):
-        if self.leader_id is None:
-            if self.replies == []:
-                print(f"上位NodeからリプライがなかったのでNode {self.id} はリーダーになります")
-                self.become_leader()
+            if self.leader_id is None:
+                if self.replies == []:
+                    self.become_leader()
+                    time.sleep(1)
+                    return
            
         
     #リーダーになる
     #他のNodeにregister_leaderを送信
     def become_leader(self):
-        if self.leader_id is None:
-            self.leader_id = self.id
-            print(f"【速報！！！！！】Node {self.id} がリーダーになりました!!")
-            print("これにてリーダー選挙を終了します")
-            print(f"リーダーはNode {self.id}です")
-            for node_id in BullyNode.processes_id:
-                if node_id != self.id:
-                    try:
-                        node_port = 8000 + node_id
-                        proxy = ServerProxy(f"http://localhost:{node_port}", allow_none=True)
-                        proxy.register_leader(self.id)
-
-                    except Exception as e:
-                        print(f"Node {self.id}はNode {node_id} にregister_leaderのRPCを送信できませんでした")
-                        print(f'エラー原因{e}')
-                        #continue
-        else:
-            print(f"Node {self.id} はリーダーがすでにいます")
-            return
+        with BullyNode.lock:
+            if self.leader_id is None:
+                self.leader_id = self.id
+                print(f"【速報！！！！！】Node {self.id} がリーダーになりました!!")
+                print(f"リーダーはNode {self.id}です")
+                for node_id in BullyNode.processes_id:
+                    if node_id != self.id:
+                        try:
+                            node_port = 8000 + node_id
+                            proxy = ServerProxy(f"http://localhost:{node_port}", allow_none=True)
+                            proxy.register_leader(self.id)
+                            time.sleep(1)
+                        except Exception as e:
+                            print(f"Node {self.id}はNode {node_id} にregister_leaderのRPCを送信できませんでした")
+                            print(f'エラー原因{e}')
+                            #continue
+                print("これにてリーダー選挙を終了します")
+            else:
+                print(f"Node {self.id} はリーダーがすでにいます")
+                return
 
 
     #自分のリーダーidに新しいリーダーのidを登録
@@ -170,8 +172,15 @@ if __name__ == "__main__":
     node_1 = BullyNode(1, 8001)
     node_2 = BullyNode(2, 8002)
     node_3 = BullyNode(3, 8003, is_down=True)
+    node_4 = BullyNode(4, 8004)
+    node_5 = BullyNode(5, 8005, is_down=True)
     
-    #node_4 = BullyNode(4, 8004)
-    #node_5 = BullyNode(5, 8005, is_down=True)
-    
+
     node_1.send_parallel_election()
+
+    node_1.server_thread.join()
+    node_2.server_thread.join()
+    node_3.server_thread.join()
+    node_4.server_thread.join()
+    node_5.server_thread.join()
+    
