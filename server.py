@@ -30,14 +30,6 @@ class BullyNode:
         else:
             print(f"Node {self.id} は故障しています")
 
-    '''
-    def start_server(self):
-        with SimpleXMLRPCServer((self.host, self.port), allow_none=True) as server:
-            server.register_instance(self)
-            while not BullyNode.leader_elected:  # リーダーが選出されるまでサーバーを実行
-                server.handle_request()
-    '''
-
     #リーダーの故障に気づいたNodeが全てのNodeにリーダをリセットするRPCを送信する
     def reset_all_leader(self):
         for node_id in BullyNode.processes_id:
@@ -69,9 +61,7 @@ class BullyNode:
                 t.daemon = True
                 threads.append(t)
                 t.start()
-                t.join()
-
-
+            time.sleep(3)
             if self.replies == []:
                 self.become_leader()
             
@@ -149,11 +139,10 @@ if __name__ == "__main__":
 
     node_1 = BullyNode(1, 8001)
     node_2 = BullyNode(2, 8002)
-    node_3 = BullyNode(3, 8003, is_down=True)
+    node_3 = BullyNode(3, 8003)
     node_4 = BullyNode(4, 8004)
     node_5 = BullyNode(5, 8005, is_down=True)
     
 
     node_1.send_parallel_election()
     time.sleep(5)
-    
