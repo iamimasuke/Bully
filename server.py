@@ -48,7 +48,6 @@ class BullyNode:
         self.leader_id = None
         return
             
-
     #送信Nodeが複数のスレッドを自分の中に作成し、それぞれのスレッドで選挙を送信する
     def send_parallel_election(self):
         self.replies = []
@@ -59,7 +58,8 @@ class BullyNode:
                 t=threading.Thread(target=self.send_election, args=(higher_node_id,), daemon=True)
                 threads.append(t)
                 t.start()
-            time.sleep(3)
+            for t in threads:
+                t.join()
             if self.replies == []:
                 self.become_leader()
             
@@ -144,3 +144,4 @@ if __name__ == "__main__":
 
     node_1.send_parallel_election()
     time.sleep(5)
+  
