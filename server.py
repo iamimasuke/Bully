@@ -24,8 +24,7 @@ class BullyNode:
             print(f"Node {self.id} は故障していません")
             self.server = SimpleXMLRPCServer(("localhost", port), allow_none=True)
             self.server.register_instance(self)
-            self.server_thread = threading.Thread(target=self.server.serve_forever)
-            self.server_thread.daemon = True
+            self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
             self.server_thread.start()
         else:
             print(f"Node {self.id} は故障しています")
@@ -57,8 +56,7 @@ class BullyNode:
             threads = []
             higher_nodes_id = [p for p in BullyNode.processes_id if p > self.id]
             for higher_node_id in higher_nodes_id:
-                t=threading.Thread(target=self.send_election, args=(higher_node_id,))
-                t.daemon = True
+                t=threading.Thread(target=self.send_election, args=(higher_node_id,), daemon=True)
                 threads.append(t)
                 t.start()
             time.sleep(3)
