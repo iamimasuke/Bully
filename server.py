@@ -88,7 +88,6 @@ class BullyNode:
         if not self.leader_id is None:
             print(f"Node {self.id} はリーダーがいるので選挙を開始しません")
             return
-        #リーダーがいなければリプ送って選挙開始
         else:
             #リプの送信
             #自分のidが最大ならリーダーになる
