@@ -9,7 +9,6 @@ import sys
 class BullyNode:
 
     processes_id = []
-    lock = threading.Lock()
 
 
     def __init__(self, node_id, port, is_down=False):
@@ -31,6 +30,13 @@ class BullyNode:
         else:
             print(f"Node {self.id} は故障しています")
 
+    '''
+    def start_server(self):
+        with SimpleXMLRPCServer((self.host, self.port), allow_none=True) as server:
+            server.register_instance(self)
+            while not BullyNode.leader_elected:  # リーダーが選出されるまでサーバーを実行
+                server.handle_request()
+    '''
 
     #リーダーの故障に気づいたNodeが全てのNodeにリーダをリセットするRPCを送信する
     def reset_all_leader(self):
@@ -57,7 +63,6 @@ class BullyNode:
         self.replies = []
         if self.leader_id is None:
             threads = []
-            threads2 = []
             higher_nodes_id = [p for p in BullyNode.processes_id if p > self.id]
             for higher_node_id in higher_nodes_id:
                 t=threading.Thread(target=self.send_election, args=(higher_node_id,))
@@ -65,6 +70,8 @@ class BullyNode:
                 threads.append(t)
                 t.start()
                 t.join()
+
+
             if self.replies == []:
                 self.become_leader()
             
@@ -79,7 +86,7 @@ class BullyNode:
                 #e: cannot marshal recursive dictionaries
                 node_port = 8000 + higher_node_id
                 proxy = ServerProxy(f"http://localhost:{node_port}", allow_none=True)
-                reply = proxy.election(self.id)
+                reply = proxy.election()
                 self.replies.append(reply)
             except Exception as e:
                 print(f"Node {self.id} はNode {higher_node_id} にelectionのRPCを送信できませんでした") 
@@ -87,7 +94,7 @@ class BullyNode:
             
             
    #選挙を受け取ったNodeが送信元にリプライを送り、自分より大きいNodeに選挙を通知
-    def election(self,from_node_id):
+    def election(self):
         #リーダーがいれば終了    
         if not self.leader_id is None:
             print(f"Node {self.id} はリーダーがいるので選挙を開始しません")
@@ -142,16 +149,11 @@ if __name__ == "__main__":
 
     node_1 = BullyNode(1, 8001)
     node_2 = BullyNode(2, 8002)
-    node_3 = BullyNode(3, 8003)
-    node_4 = BullyNode(4, 8004, is_down=True)
+    node_3 = BullyNode(3, 8003, is_down=True)
+    node_4 = BullyNode(4, 8004)
     node_5 = BullyNode(5, 8005, is_down=True)
     
 
     node_1.send_parallel_election()
-
-    node_1.server_thread.join()
-    node_2.server_thread.join()
-    node_3.server_thread.join()
-    node_4.server_thread.join()
-    node_5.server_thread.join()
+    time.sleep(5)
     
